@@ -1,0 +1,6 @@
+data/
+out/
+*.png
+__pycache__/
+.idea/
+venv/
