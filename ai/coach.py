@@ -36,7 +36,7 @@ class coach(object):
 
             # update the learning rate
             lr_scheduler.step()
-            self.evaluate(self.model, data_loader_train, device)
+            self.evaluate(self.model, data_loader_test, device)
 
     def train_one_epoch(self, optimizer, data_loader, device, epoch, print_freq, scaler=None):
         self.model.train()
