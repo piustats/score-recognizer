@@ -1,7 +1,7 @@
 import argparse
 import json
 import requests, zipfile, io
-
+from os import path
 from cocosplit import create_splits
 
 
@@ -32,6 +32,8 @@ def main(label_studio_url, project_id, auth_token, split):
         data = json.load(jsonFile)
     for image in data['images']:
         image['file_name'] = str.split(image['file_name'], '/')[-1]
+        # convert to png
+
     with open(result_file_path, "w") as jsonFile:
         json.dump(data, jsonFile, indent=4)
 

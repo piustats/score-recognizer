@@ -1,12 +1,14 @@
 import cv2
+import torch
 from PIL import Image
 from matplotlib import pyplot as plt
 import torchvision.transforms as T
 import PIL
 from dataset.transforms import ExIfTransposeImg
 
+__DEBUG__ = True
 
-def get_prediction(img_path, threshold, model, names):
+def get_prediction(img_path, threshold, model, names, device):
     """
     get_prediction
       parameters:
@@ -26,11 +28,13 @@ def get_prediction(img_path, threshold, model, names):
         T.ToTensor()
     ])
     img = transform(img)
+    img = img.to(device)
     pred = model([img])
-    pred_class_ids = [names[i]['id'] for i in list(pred[0]['labels'].numpy())]
-    pred_class = [names[i]['name'] for i in list(pred[0]['labels'].numpy())]
-    pred_boxes = [[(int(i[0]), int(i[1])), (int(i[2]), int(i[3]))] for i in list(pred[0]['boxes'].detach().numpy())]
-    pred_score = list(pred[0]['scores'].detach().numpy())
+    pred_class_ids = [names[i]['id'] for i in list(pred[0]['labels'].cpu().numpy())]
+    pred_class = [names[i]['name'] for i in list(pred[0]['labels'].cpu().numpy())]
+    pred_boxes = [[(int(i[0]), int(i[1])), (int(i[2]), int(i[3]))] for i in
+                  list(pred[0]['boxes'].detach().cpu().numpy())]
+    pred_score = list(pred[0]['scores'].detach().cpu().numpy())
     return filter(pred_class_ids, pred_boxes, pred_score, threshold)
 
     # pred_t = [pred_score.index(x) for x in pred_score if x > threshold][-1]
@@ -63,10 +67,7 @@ def filter(pred_class_ids, pred_boxes, pred_score, threshold):
             'title': best_title}
 
 
-def object_detection_api(img_path, model, names, threshold=0.5, rect_th=3, text_size=3, text_th=3, output_image=None):
-    pred = get_prediction(img_path, threshold, model, names)
-    # Get predictions
-    img = cv2.imread(img_path)
+def draw_boxes(img, names, pred, rect_th=3, text_size=3, text_th=3):
     # Read image with cv2
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     # Convert to RGB
@@ -76,18 +77,19 @@ def object_detection_api(img_path, model, names, threshold=0.5, rect_th=3, text_
                 i, prob, boxes = params
                 pred_cls = names[i]['name']
 
-                cv2.rectangle(img, boxes[0], boxes[1], color=(0, 255, 0), thickness=rect_th)
+                cv2.rectangle(img, (boxes[0], boxes[1]), (boxes[2], boxes[3]), color=(0, 255, 0), thickness=rect_th)
                 # Draw Rectangle with the coordinates
-                cv2.putText(img, f'{pred_cls} ({prob:.2f})', boxes[0], cv2.FONT_HERSHEY_SIMPLEX, text_size,
+                cv2.putText(img, f'{pred_cls} ({prob:.2f})', (boxes[0], boxes[1]), cv2.FONT_HERSHEY_SIMPLEX, text_size,
                             (0, 255, 0), thickness=text_th)
-    # Write the prediction class
-    if output_image != None:
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(output_image, img)
-    else:
+    return img
+
+
+def show(img):
+    if __DEBUG__:
         plt.figure(figsize=(20, 30))
-        # display the output image
-        plt.imshow(img)
-        plt.xticks([])
-        plt.yticks([])
-        plt.show()
+        if not isinstance(img, PIL.Image.Image) and len(img.shape) == 2:
+            plt.imshow(img, cmap='gray', vmax=255, vmin=0)
+        else:
+            plt.imshow(img)
+        plt.waitforbuttonpress()
+        plt.close()

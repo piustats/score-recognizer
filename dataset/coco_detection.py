@@ -3,16 +3,15 @@ import torchvision
 from pycocotools import mask as coco_mask
 import dataset.transforms as T
 
-
 def get_dataset(img_folder, ann_file, training_transforms: bool = True):
     if training_transforms:
         t = [
             T.ExIfTranspose(),
             ConvertCocoPolysToMask(),
-            T.RandomShortestSize(
-                min_size=(480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800), max_size=1333
-            ),
-            T.RandomIoUCrop(),
+            # T.RandomShortestSize(
+            #     min_size=(480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800), max_size=1333
+            # ),
+            # T.RandomIoUCrop(),
             T.PILToTensor(),
             T.ConvertImageDtype(torch.float)
         ]
