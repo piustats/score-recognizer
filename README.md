@@ -1,4 +1,4 @@
-### A machine learning-based approach to extracting PIU scores from images
+## A machine learning-based approach to extracting PIU scores from images
 
 ![schema](https://github.com/piustats/score-recognizer/blob/main/imgs/schema.jpg?raw=true)
 
