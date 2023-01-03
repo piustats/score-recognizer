@@ -2,19 +2,19 @@
 
 ![schema](https://github.com/piustats/score-recognizer/blob/main/imgs/schema.jpg?raw=true)
 
-#### Installation
+### Installation
 1. Clone this repository,
 2. Install all necessary packages from `requirements.txt`.
 3. Install [tesseract](https://github.com/tesseract-ocr/tesseract) through your package manager. We used `tesseract 5.2.0` for development and deploy.
 
-#### Pretrained models
+### Pretrained models
 This code uses two models to transcribe scores from images:
 
 1. A Faster R-CNN pytorch model for object detection ([download pretained model](https://drive.google.com/file/d/1t7euKqEFbaEb8DzXt1ZcQk0nxwDMRS5C/view?usp=sharing))
 2. A tesseract model for OCR ([download pretrained model](https://drive.google.com/file/d/1r1yUIHYWUoi0pxdm1HG5KDzmkj0qhJm0/view?usp=sharing))
 
-#### Usage
-##### Comand line syntax
+### Usage
+#### Command line syntax
 ```
 usage: main.py predict [-h] [--disable-logs] [--enable-debug-images] [--device DEVICE] cnn_model tesseract_model image certainty
 
@@ -33,11 +33,33 @@ options:
                         Choose computing device (default: cpu)
 
 ```
-##### Example
+#### Example
 
-For prediction, just typen on your shell:
+For prediction, just type:
 ```sh
 $ python3 main.py predict <pytorch_model_path> <tesseract_model_path> <image_path>\
  0.7 -d 'cpu' --disable-logs
 ```
 where `<pytorch_model_path>` is the path to the pretrained Faster R-CNN model, `<tesseract_model_path>` is the folder path to the tesseract model (after extraction), and `<image_path>` is the path to the image.
+
+### Output
+
+The output is a `JSON` string dumped in `stdout`. It follows the schema (in typescript style):
+```ts
+type PlayerScore = {
+  perfect?: number;
+  great?: number;
+  good?: number;
+  bad?: number;
+  miss?: number;
+  maxCombo?: number;
+  totalScore?: number;
+  calories?: number;
+};
+
+type InferenceResult = {
+  p1Score?: PlayerScore;
+  p2Score?: PlayerScore;
+};
+```
+Attributes may appear or not depending on the confidence of the results yielded by  the OCR system.
