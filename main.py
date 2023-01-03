@@ -23,7 +23,7 @@ def parse_args():
                               default=4)
     train_parser.add_argument('--epochs', '-e', type=int, help='Number of epochs for training',
                               default=10)
-    train_parser.add_argument('--device', '-d', type=str, help='Choose compute device', default='cpu')
+    train_parser.add_argument('--device', '-d', type=str, help='Choose computing device', default='cpu')
     train_parser.add_argument('--output-model', '-o', type=str, help='Output model', default=None)
     train_parser.add_argument('train_json', type=str, help='JSON of training dataset')
     train_parser.add_argument('train_images', type=str, help='Folder of training images')
@@ -36,16 +36,16 @@ def parse_args():
 
     test_parser.add_argument('cnn_model', type=str, help='Path to trained Faster RCNN model')
     test_parser.add_argument('tesseract_model', type=str, help='Path to tesseract model')
-    test_parser.add_argument('-i', '--image', type=str, help='Path to image (for one prediction)', default=None)
+    test_parser.add_argument('image', type=str, help='Path to image (for one prediction)')
     test_parser.add_argument('certainty', type=float, help='Certainty', default=None)
-    test_parser.add_argument('--output-json', '-o', type=str,
-                             help='Select path to save json with predicted scores', default=None)
+    # test_parser.add_argument('--output-json', '-o', type=str,
+    #                          help='Select path to save json with predicted scores', default=None)
 
     test_parser.add_argument('--disable-logs', action='store_true',
                              help='Disable logs. Only prediction is shown', default=False)
     test_parser.add_argument('--enable-debug-images', action='store_true',
                              help='Show images of object detection and OCR', default=False)
-    test_parser.add_argument('--device', '-d', type=str, help='Choose compute device', default='cpu')
+    test_parser.add_argument('--device', '-d', type=str, help='Choose computing device', default='cpu')
     return vars(parser.parse_args())
 
 
