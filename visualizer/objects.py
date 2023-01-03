@@ -6,7 +6,7 @@ import torchvision.transforms as T
 import PIL
 from dataset.transforms import ExIfTransposeImg
 
-__DEBUG__ = True
+__DEBUG__ = False
 
 def get_prediction(img_path, threshold, model, names, device):
     """

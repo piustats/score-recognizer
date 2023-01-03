@@ -3,9 +3,6 @@ import numpy as np
 import torch
 from PIL import Image
 import torchvision.transforms as T
-import PIL
-from matplotlib import pyplot as plt
-from scipy import stats as st
 from dataset.transforms import ExIfTransposeImg
 from ocr.unproject.unproject_text import unproject
 from visualizer.objects import filter, show, draw_boxes
@@ -13,34 +10,11 @@ import pytesseract
 from re import match as re_match
 
 
-def find_score(img, box):
-    crop = img.crop(box)
-    return crop
+def crop_image(img, box):
+    return img.crop(box)
 
 
-def bgremove3(myimage):
-    img = pil2cv(myimage)
-    # BG Remover 3
-    myimage_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-    # Take S and remove any value that is less than half
-    s = myimage_hsv[:, :, 1]
-    s = np.where(s < 127, 0, 1)  # Any value below 127 will be excluded
-
-    # We increase the brightness of the image and then mod by 255
-    v = (myimage_hsv[:, :, 2] + 127) % 255
-    v = np.where(v > 127, 1, 0)  # Any value above 127 will be part of our mask
-
-    # Combine our two masks based on S and V into a single "Foreground"
-    foreground = np.where(s + v > 0, 1, 0).astype(np.uint8)  # Casting back into 8bit integer
-
-    background = np.where(foreground == 0, 255, 0).astype(np.uint8)  # Invert foreground to get background in uint8
-    background = cv2.cvtColor(background, cv2.COLOR_GRAY2BGR)  # Convert background back into BGR space
-    foreground = cv2.bitwise_and(img, img, mask=foreground)  # Apply our foreground map to original image
-    return foreground  # Combine foreground and background
-
-
-def preprocess_score_crop(img, upper_threshold=1001):
+def preprocess_score_crop(img, align_position, upper_threshold=1001):
     color = pil2cv(img)
     img = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -52,27 +26,38 @@ def preprocess_score_crop(img, upper_threshold=1001):
     filtered = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, upper_threshold, -100)
     filtered = 255 - filtered
 
-    hw = w // 2
-    ph = int(h * 0.75)
-    filtered[:ph, :hw] = 255
+    hw = w // 3
+    ph = int(h * 0.7)
+    if align_position == 'right':
+        hw = w // 3
+        filtered[:ph, :hw] = 255
+    elif align_position == 'left':
+        hw = 2 * (w // 3)
+        filtered[:ph, hw:] = 255
 
     mask = 255 - filtered
     mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     im_thresh_color = cv2.bitwise_and(color, mask)
     _, _, bands = im_thresh_color.shape
-    mode = []
+    median = []
+    std = []
     for i in range(bands):
         band = im_thresh_color[:, :, i]
         band = band[band != 0]
         band = band.reshape(-1)
-        band_mode = int(st.mode(band, keepdims=True).mode)
-        mode.append(band_mode)
-
-    r = 40
-    lower_range = np.array([i - r for i in mode])
-    upper_range = np.array([i + r for i in mode])
+        band_median = np.median(band)
+        band_std = int(np.std(band))
+        median.append(band_median)
+        std.append(band_std)
+    lower_range = np.array([median - 2 * std for median, std in zip(median, std)])
+    upper_range = np.array([median + 2 * std for median, std in zip(median, std)])
     mask = cv2.inRange(color, lower_range, upper_range)
-    mask[:ph, :hw] = 0
+
+    if align_position == 'right':
+        mask[:ph, :hw] = 0
+    elif align_position == 'left':
+        mask[:ph, hw:] = 0
+
     mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     im_thresh_color = cv2.bitwise_and(color, mask)
 
@@ -80,13 +65,13 @@ def preprocess_score_crop(img, upper_threshold=1001):
     result[result != 0] = 255
     result = 255 - result
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-    result = cv2.morphologyEx(result,cv2.MORPH_OPEN,kernel)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    result = cv2.morphologyEx(result, cv2.MORPH_OPEN, kernel)
 
     return result
 
 
-def get_prediction(img, threshold, model, names, device):
+def get_object_prediction(img, threshold, model, names, device):
     pred = model([img])
     pred_class_ids = [names[i]['id'] for i in list(pred[0]['labels'].cpu().numpy())]
     pred_boxes = [(int(i[0]), int(i[1]), int(i[2]), int(i[3])) for i in list(pred[0]['boxes'].detach().cpu().numpy())]
@@ -109,20 +94,23 @@ def read_img(img_path, device):
     return img_pil, img_tensor
 
 
-def ocr(img, dpi):
-    config = f'--dpi {dpi} --tessdata-dir ../ocr/Karnivore-digits-model-rotate-skew/tesstrain/data --psm 4 -l Karnivore' \
-             f' -c tessedit_char_whitelist=0123456789. -c load_system_dawg=0 -c load_freq_dawg=0'
+def ocr(tesseract_model, img, dpi):
+    config = f'--dpi {dpi} --tessdata-dir {tesseract_model} --psm 4 -l Karnivore' \
+             f' -c tessedit_char_whitelist=0123456789. -c load_system_dawg=0 -c load_freq_dawg=0 -c load_number_dawg=0' \
+             f'-c load_unambig_dawg=0 -c load_bigram_dawg=0 -c load_fixed_length_dawgs=0 -c load_punc_dawg=0' \
+             f'-c segment_penalty_garbage=0 -c segment_penalty_dict_nonword=0 -c segment_penalty_dict_frequent_word=0' \
+             f'-c segment_penalty_dict_case_ok=0 -c segment_penalty_dict_case_bad=0'
     ocred = pytesseract.image_to_string(img, config=config)
     return ocred.rstrip('\n')
 
 
-def divide_ocr_and_asses(img):
+def divide_ocr_and_assess(tesseract_model, img):
     print(f'Getting grade divisions')
     d, dpi = get_grade_divisions(img)
     # for l, i in d.items():
     #     show(i)
     print(f'OCRing')
-    p = {l: ocr(i, dpi) for l, i in d.items()}
+    p = {l: ocr(tesseract_model, i, dpi) for l, i in d.items()}
     grade = assess_score_ocred(p)
     return p, grade
 
@@ -191,29 +179,30 @@ def get_grade_divisions(img):
         div = cv2.cvtColor(div, cv2.COLOR_GRAY2RGB)
         header = div_headers[i]
         d[header] = div
+
     return d, dpi
 
 
-def recognize_score(img_pil, box, filter_threshold):
+def recognize_score(tesseract_model, img_pil, box, align_position):
     print(f'Cropping')
-    crop = find_score(img_pil, box)
+    crop = crop_image(img_pil, box)
     show(crop)
 
     print(f'Filtering')
-    filtered_crop = preprocess_score_crop(crop)
+    filtered_crop = preprocess_score_crop(crop, align_position)
     show(filtered_crop)
 
     _, _, dpi = estimate_score_dimensions(filtered_crop)
     h, w = filtered_crop.shape
     if dpi < 100:
-        filtered_crop = cv2.resize(filtered_crop, (w * 3, h * 3), interpolation=cv2.INTER_NEAREST)
+        filtered_crop = cv2.resize(filtered_crop, (int(w * 2.25), int(h * 2.25)), interpolation=cv2.INTER_NEAREST)
         show(filtered_crop)
     elif dpi < 200:
-        filtered_crop = cv2.resize(filtered_crop, (w * 2, h * 2), interpolation=cv2.INTER_NEAREST)
+        filtered_crop = cv2.resize(filtered_crop, (int(w * 1.5), int(h * 1.5)), interpolation=cv2.INTER_NEAREST)
         show(filtered_crop)
 
     # 1. try to ocr without projection
-    p, s = divide_ocr_and_asses(filtered_crop)
+    p, s = divide_ocr_and_assess(tesseract_model, filtered_crop)
     print(f'OCR without projection score: {s}')
     print(f'Prediction: {p}')
 
@@ -222,47 +211,84 @@ def recognize_score(img_pil, box, filter_threshold):
     crop_unprojected = unproject(filtered_crop)
     show(crop_unprojected)
 
-    p_proj, s_proj = divide_ocr_and_asses(crop_unprojected)
+    p_proj, s_proj = divide_ocr_and_assess(tesseract_model, crop_unprojected)
 
     print(f'OCR with projection score: {s_proj}')
     print(f'Prediction: {p_proj}')
-    return s if s > s_proj else s_proj, p if s > s_proj else p_proj
+    return (s, p) if s > s_proj else (s_proj, p_proj)
 
 
-def recognize(img_path, threshold, model, names, device):
+def search_best_ocr_score(tesseract_model, img_pil, box, align_position):
+    # filters = [1001 + i * 50 for i in range(3)]
+    # filters.extend([851 + i * 50 for i in range(3)])
+    paddings = [0.025 * i for i in range(1, 6)]
+    ocr_predictions = []
+    # for filter in filters:
+    for padding in paddings:
+        print(f'Trying padding={padding:.2f}')
+        bh = box[3] - box[1]
+        bw = box[2] - box[0]
+        p1x = box[0] - bw * padding
+        p1y = box[1] - bh * padding
+        p2x = box[2] + bw * padding
+        p2y = box[3] + bh * padding
+        newBox = (int(p1x), int(p1y), int(p2x), int(p2y))
+        # show(draw_boxes(pil2cv(img_pil), names, pred))
+        s, p = recognize_score(tesseract_model, img_pil, newBox, align_position)
+
+        ocr_predictions.append((s, p))
+        if s == 1.0:
+            break
+    # if s == 1.0:
+    #     break
+    sort = sorted(ocr_predictions, key=lambda x: x[0], reverse=True)
+    print(f'best prediction: {sort[0]}')
+    return sort[0]
+
+
+def recognize(img_path, threshold, cnn_model, tesseract_model, names, device):
+    ocred = {}
     print(f'Reading image "{img_path}" from disk')
     img_pil, img_tensor = read_img(img_path, device)
     show(img_pil)
 
     print(f'Predicting bboxes')
-    pred = get_prediction(img_tensor, threshold, model, names, device)
+    pred = get_object_prediction(img_tensor, threshold, cnn_model, names, device)
     show(draw_boxes(pil2cv(img_pil), names, pred))
 
-    filters = [1001 + i * 50 for i in range(3)]
-    filters.extend([851 + i * 50 for i in range(3)])
-    paddings = [0.025 * i for i in range(5)]
-    box = pred['p2'][0][2]
-    ocr_predictions = []
-    for filter in filters:
-        for padding in paddings:
-            print(f'Trying filter={filter} and padding={padding:.2f}')
-            bh = box[3] - box[1]
-            bw = box[2] - box[0]
-            p1x = box[0] - bw * padding
-            p1y = box[1] - bh * padding
-            p2x = box[2] + bw * padding
-            p2y = box[3] + bh * padding
-            newBox = (int(p1x), int(p1y), int(p2x), int(p2y))
-            # show(draw_boxes(pil2cv(img_pil), names, pred))
-            s, p = recognize_score(img_pil, newBox, filter)
+    if pred['p1']:
+        boxp1 = pred['p1'][0][2]
+        p1score = search_best_ocr_score(tesseract_model,img_pil, boxp1, 'left')
+        score = clean_up_score(p1score[1])
+        ocred['p1Score'] = score
 
-            ocr_predictions.append((s, p))
-            if s == 1.0:
-                break
-        if s == 1.0:
-            break
-    sort = sorted(ocr_predictions, key=lambda x: x[0], reverse=True)
-    print(f'best prediction: {sort[0]}')
+    if pred['p2']:
+        boxp2 = pred['p2'][0][2]
+        p2score = search_best_ocr_score(tesseract_model, img_pil, boxp2, 'right')
+        score = clean_up_score(p2score[1])
+        ocred['p2Score'] = score
+
+    print(f'OCR completed:')
+    print(ocred)
+
+    return ocred
+
+
+def clean_up_score(score):
+    out = {}
+    total_score = score['totalScore']
+    if total_score.isnumeric() and total_score[-2:] != '00':
+        out['totalScore'] = int(total_score)
+
+    for l, s in score.items():
+        if l != 'calories':
+            if len(s) > 2 and s.isnumeric():
+                out[l] = int(s)
+
+    if is_number(score['calories']):
+        out['calories'] = float(score['calories'])
+
+    return out
 
 
 def pil2cv(img):
