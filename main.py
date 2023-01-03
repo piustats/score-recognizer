@@ -80,7 +80,7 @@ def predict(image, device, certainty, cnn_model, tesseract_model, disable_logs, 
     m.eval()
     scores = recognize(image, certainty, m, tesseract_model, c, device)
     sys.stdout = sys.__stdout__
-    print(json.dumps(scores))
+    print(json.dumps(scores, indent=4))
 
 def predict_image(model, cats, image, certainty, output_image, device):
     objects.object_detection_api(image, model, cats, certainty, device=device, output_image=output_image)
