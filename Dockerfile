@@ -28,4 +28,5 @@ ENV TESSERACT_MODEL=/app/models/tess-model
 
 COPY . .
 
-CMD ["python3", "main.py"]
+EXPOSE 80
+CMD ["python3", "server.py"]
