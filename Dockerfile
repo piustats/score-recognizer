@@ -20,7 +20,7 @@ RUN pip install -r requirements.txt
 # Look at the readme to download both of these models
 COPY models/faster-rcnn-model-small ./models/faster-rcnn-model-small
 COPY models/tesseract-karnivore-model.zip ./models/tesseract-karnivore-model.zip
-RUN unzip ./models/tesseract-karnivore-model.zip
+RUN unzip ./models/tesseract-karnivore-model.zip -d /app/models/
 
 ENV CNN_MODEL=/app/models/faster-rcnn-model-small
 ENV TESSERACT_MODEL=/app/models/tess-model
